@@ -1,4 +1,4 @@
-# Invitae hybrid capture sequencing analysis.
+# Invitae hybrid capture sequencing analysis (Author : Karan Bhatt)
 
 ## purpose : the goal of this analysis was to compare the hybrid capture sequencing method with the same samples previously sequenced using ARTIC tagmentation method. 
 
