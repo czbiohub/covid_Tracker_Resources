@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 # Invitae hybrid capture sequencing analysis. AMY-AMY-AMY
+=======
+# Invitae hybrid capture sequencing analysis (Author : Karan Bhatt)
+>>>>>>> 64f9e70d9dc0033bc66899e808a568c2c25c71be
 
 ## purpose : the goal of this analysis was to compare the hybrid capture sequencing method with the same samples previously sequenced using ARTIC tagmentation method. 
 
