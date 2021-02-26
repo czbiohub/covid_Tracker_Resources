@@ -14,7 +14,7 @@
           
           * a README.md (briefly explain what the experiment is)
           
-  * COMET Arctic Library Prep Protocol
+  * COMET Artic Library Prep Protocol
           
   2. README.md
   
