@@ -6,15 +6,15 @@
 
 * Main directory - covid_Tracker
 
-  1. Experiment broader category ( example : Invitae analyses)
+  1. Experiment broader category (example : Invitae analyses)
   
-      + specific experiemnt - (example : Invitae hybrid capture sequence analysis)
+      + specific experiment - (example : Invitae hybrid capture sequence analysis)
       
           * report for the analysis ( formats : html, pptx, pdf, ...)
           
           * a README.md (briefly explain what the experiment is)
           
-          
+  * COMET Arctic Library Prep Protocol
           
   2. README.md
   
