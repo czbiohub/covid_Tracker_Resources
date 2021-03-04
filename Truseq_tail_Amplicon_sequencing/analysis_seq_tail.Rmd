@@ -1,0 +1,701 @@
+---
+title: "Truseq Tail Analysis"
+author: Karan Bhatt
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+
+
+```{r, include=FALSE}
+show_script = 0 # set 0 or FALSE to write output for wet lab ppl, and TRUE for record keeping
+```
+
+
+```{r, include=show_script}
+# global_options
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, echo=show_script)
+
+options(scipen=999)
+```
+
+
+```{r, warning=FALSE}
+library(tidyverse)
+library(plotly)
+library(fuzzyjoin)
+```
+
+
+
+
+
+```{r, include=show_script, warning=FALSE}
+# Load stats for seq_052 tail 
+combined.stats.seq_52_tail <- read.csv("52_53_tail/52_tail/combined_seq_52_tail.stats.tsv", sep = "\t")
+combined.stats.seq_52_tail$protocol <- "Truseq_tail"
+combined.stats.seq_52_tail$plate <- "Seq_052_Tail"
+combined.stats.seq_52_tail$CZB_ID <- substr(combined.stats.seq_52_tail$sample_name, 1, 12)
+combined.stats.seq_52_tail$project <- substr(combined.stats.seq_52_tail$sample_name , 1, 6)
+
+#load stats for seq_053 tail 
+combined.stats.seq_53_tail <- read.csv("52_53_tail/53_tail/combined_Seq_053_tail.stats.tsv", sep = "\t")
+combined.stats.seq_53_tail$protocol <- "Truseq_tail"
+combined.stats.seq_53_tail$plate <- "Seq_053_Tail"
+combined.stats.seq_53_tail$CZB_ID <- substr(combined.stats.seq_53_tail$sample_name, 1, 12)
+combined.stats.seq_53_tail$project <- substr(combined.stats.seq_53_tail$sample_name , 1, 6)
+
+#load stats for seq_052 
+combined.stats.seq_52 <- read.csv("52_53_tagmentation/combined_seq_052_tagmentation.stats.tsv", sep = "\t")
+combined.stats.seq_52$protocol <- "Tagmentation"
+combined.stats.seq_52$plate <- "Seq_052_Tagmentation"
+combined.stats.seq_52$CZB_ID <- substr(combined.stats.seq_52$sample_name, 1, 12)
+combined.stats.seq_52$project <- substr(combined.stats.seq_52$sample_name , 1, 6)
+
+
+#load stats for seq_053
+combined.stats.seq_53 <- read.csv("52_53_tagmentation/combined.stats.seq_053_tn5.stats.tsv", sep = "\t")
+combined.stats.seq_53$protocol <- "Tagmentation"
+combined.stats.seq_53$plate <- "Seq_053_Tagmentation"
+combined.stats.seq_53$CZB_ID <- substr(combined.stats.seq_53$sample_name, 1, 12)
+combined.stats.seq_53$project <- substr(combined.stats.seq_53$sample_name , 1, 6)
+
+combined.stats <- bind_rows(combined.stats.seq_52, combined.stats.seq_52_tail, combined.stats.seq_53, combined.stats.seq_53_tail)
+combined.stats$seq <- substr(combined.stats$plate, 1, 7)
+
+
+metadata <- read.csv("sample_metadata.csv")
+#View(metadata)
+
+combined.stats.metadata <- full_join(combined.stats, metadata , by = "CZB_ID")
+#View(combined.stats.metadata)
+
+#View(combined.stats.metadata)
+combined.stats.metadata$Project <- substr(combined.stats.metadata$sample_name, 1, 6)
+#colnames(combined.stats.metadata)
+
+
+full_dataframe_replace <- combined.stats.metadata %>%
+    tidyr::gather(assay, ct, CoV, RnaseP, RNAse.P, Rnase.P, SC2, E, RP, N1, N, N2, RNaseP) %>%
+    dplyr::mutate(assay=dplyr::if_else(assay%in%c("RnaseP", "RNAse.P", "Rnase.P", "RNaseP"), "RnaseP", assay)) %>%
+#    dplyr::mutate(assay=dplyr::if_else(assay%in%c("S", "S.gene"), "S", assay)) %>%
+#    dplyr::mutate(assay=dplyr::if_else(assay%in%c("N1", "N2", "N", "N.gene"), "N", assay)) %>%
+#    dplyr::mutate(assay=dplyr::if_else(assay%in%c("ORF1", "ORF1ab"), "ORF1", assay)) %>%
+    dplyr::filter(!is.na(ct))
+
+# check that removing NA didn't remove samples
+# here removed water samples but since all water has Ct as NA so all got removed in step above
+n_sample = select(full_dataframe_replace, sample_name) %>% filter(!str_detect(sample_name, fixed('water', ignore_case=TRUE))) %>% unique()
+
+#nrow(n_sample) == nrow(metadata)
+
+#View(full_dataframe_replace)
+```
+
+
+### plot A : plot number of passing genomes in each protocol 
+
+
+```{r, fig.width=10}
+
+combined.stats %>%
+filter(n_actg >= 27500 & n_ambiguous <= 50) %>%
+  ggplot(aes(x= protocol),
+         show.legend = TRUE) +
+  geom_bar(width = 0.2, fill = '#159EB9') +
+  ylim(0, 300) +
+  geom_text(stat = "count", aes(label = ..count.. ), vjust = -0.5) +
+  #ggtitle("genome recovery with different ") +
+  labs(y = "total number of genomes recovered", x = "protocols") +
+  theme(plot.title = element_text( hjust = 0.4)) +
+  facet_wrap(~seq)
+
+
+# Number of passing genomes in Truseq_tail method
+genomes_in_seq_tail <- combined.stats %>%
+  filter(protocol == "Truseq_tail") %>%
+    filter(n_actg >= 27500 & n_ambiguous <= 50)
+
+# Number of passing genomes in Tagmentation method
+genomes_in_tagmentation <- combined.stats %>%
+  filter(protocol != "Truseq_tail") %>%
+    filter(n_actg >= 27500 & n_ambiguous <= 50)
+
+
+print(paste0("Number of passing genomes in ARTIC Truseq tail run is " ,nrow(genomes_in_seq_tail)) )
+
+print(paste0("Number of passing genomes in ARTIC tagmentation run is " ,nrow(genomes_in_tagmentation)) )
+
+#table(full_dataframe$Project)
+```
+
+
+### plot 1: mapped reads in water wells
+
+#### All water well looks good except B01 well in the tagmentation method
+
+```{r, fig.width=10}
+#EXTRACT WELL ID 
+p <- combined.stats.metadata %>%
+    filter(project == "water_") %>%
+    ggplot(aes(x= sample_name , y = mapped_reads , color = protocol, plotly_label = sample_name)) +
+  #scale_y_continuous(trans = "log10") +
+    geom_point(size = 0.8)  + 
+  theme(axis.text.x=element_blank(), panel.background = element_rect(fill = "white", colour = "grey50")) +
+    xlab("samples") +
+  facet_wrap( ~ protocol)
+
+ggplotly(p, tooltip = c("plotly_label", "mapped_reads"))
+```
+
+
+### Plot 2 : How do number of mapped reads correlate with Ct and compare with methods
+
+
+#### mapped reads per million total reads normalizes mapped reads to total reads. it is number of mapped reads you would expect from sequencing one million total reads
+
+
+
+
+```{r, fig.width=10}
+
+ 
+full_dataframe_replace$mapped_per_million <- (full_dataframe_replace$mapped_reads/full_dataframe_replace$total_reads)*1000000
+
+
+
+
+p <- full_dataframe_replace %>% 
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+    ggplot(aes(x= ct, y = mapped_per_million , color = protocol, plotly_label = sample_name)) +
+    geom_point(size = 0.8) +
+    #scale_y_continuous(trans = "log10") +
+    facet_wrap(~ protocol) + 
+    xlab("Ct value") +
+  ylab("mapped reads per million total reads")#+
+  #geom_vline(xintercept = 25, color = "grey")
+  
+
+ggplotly(p, tooltip = c("plotly_label", "mapped_per_million"))
+
+```
+
+to break it down : let's look at samples with ct less than 25 first. you see increase in mapped reads 
+
+mapped reads per million reads
+
+
+```{r, warning = FALSE, fig.width=10}
+p <- full_dataframe_replace %>% 
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+  filter(ct < 25) %>%
+    ggplot(aes(x= ct, y = mapped_per_million , color = protocol, plotly_label = sample_name)) +
+    geom_point(size = 0.8) +
+    #scale_y_continuous(trans = "log10") +
+    facet_wrap(~ protocol) + 
+    xlab("Ct value") +
+  ylab("mapped reads per million total reads")
+
+ggplotly(p, tooltip = c("plotly_label", "mapped_per_million"))
+
+
+full_dataframe_replace %>% 
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+  filter(ct < 25) %>%
+    ggplot(aes(x= protocol, y = mapped_per_million)) +
+  #scale_y_continuous(trans = "log10") +
+    geom_violin(fill = "pink", color = "black") + 
+    xlab("protocol") +
+  ylab("mapped reads per million total reads")+
+  #geom_dotplot(binaxis='y', stackdir='center', dotsize=0.1) +
+  stat_summary(fun=mean, geom="point", shape=23, size=10, color = "black", fill = "grey")
+
+
+
+```
+
+to further break it down : let's look at samples with ct value more than 25. you see decrease in mapped reads
+
+
+```{r, fig.width=10}
+p <- full_dataframe_replace %>% 
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+  filter(ct > 25) %>%
+    ggplot(aes(x= ct, y = mapped_per_million , color = protocol, plotly_label = sample_name)) +
+    geom_point(size = 0.8) +
+    #scale_y_continuous(trans = "log10") +
+    facet_wrap(~ protocol) + 
+    xlab("Ct value") +
+  ylab("mapped reads per million total reads")
+
+ggplotly(p, tooltip = c("plotly_label", "mapped_per_million"))
+
+
+full_dataframe_replace %>% 
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+  filter(ct > 25) %>%
+    ggplot(aes(x= protocol, y = mapped_per_million)) +
+  #scale_y_continuous(trans = "log10") +
+    geom_violin(fill = "pink", color = "black") + 
+    xlab("protocol") +
+  ylim(0,4)+
+  ylab("mapped reads per million total reads") +
+  #geom_dotplot(binaxis='y', stackdir='center', dotsize=0.2) +
+  stat_summary(fun=mean, geom="point", shape=23, size=5, color = "black", fill = "grey")
+
+
+
+```
+
+
+#### mapped_reads with respect to the assays 
+
+observation : mapped reads pattern consistent with all assays 
+
+
+```{r, fig.width=10}
+library(scales)
+p <- full_dataframe_replace %>% 
+    filter(assay != "RnaseP") %>%
+  #filter(ct > 20) %>%
+  filter(assay != "RP") %>%
+    ggplot(aes(x= ct, y = mapped_per_million , color = protocol, plotly_label = sample_name)) +
+    geom_point(size = 0.5) +
+    #scale_y_continuous(trans = "log10") +
+  facet_wrap(~ assay) + 
+    xlab("Ct value") +
+  ylab("mapped reads per million total reads") +
+  geom_vline(xintercept = 25, color = "grey")
+
+ggplotly(p, tooltip = c("plotly_label", "mapped_per_million"))
+
+
+```
+
+
+### Plot 3 : How do genome recovery correlate with Ct and compare to methods 
+
+- The gray line marks the genome size cutoff for what we mark as PASS.
+
+
+```{r, fig.width=10}
+p <- full_dataframe_replace %>% 
+  #filter(protocol == "Truseq_tail") %>%
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+    ggplot(aes(x= ct, y = n_actg , color = protocol, plotly_label = sample_name)) +
+    geom_point(size = 0.5) +
+    geom_hline(yintercept = 27500, color="grey") +
+  geom_vline(xintercept = 25, color="grey") +
+    facet_wrap(~ protocol) + 
+    xlab("Ct value") 
+  #stat_smooth()
+
+ggplotly(p, tooltip = c("plotly_label", "n_actg"))
+
+# genome recovery
+p <- full_dataframe_replace %>% 
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+    ggplot(aes(x= ct, y = (n_actg/30000)*100 , color = assay, plotly_label = sample_name)) +
+    geom_point(size = 0.5) +
+    #geom_hline(yintercept = 27500, color="grey") +
+    facet_wrap(~ protocol) + 
+    xlab("Ct value") 
+
+ggplotly(p, tooltip = c("plotly_label", "n_actg"))
+
+
+full_dataframe_replace %>% 
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+  #filter(ct > 20) %>%
+    ggplot(aes(x= protocol, y = n_actg)) +
+  #scale_y_continuous(trans = "log10") +
+    geom_violin(size = 0.8, fill = "pink", color = "black" ) + 
+    xlab("protocol") +
+      geom_hline(yintercept = 27500)+
+  #geom_dotplot(binaxis='y', stackdir='center', dotsize=0.2)
+  stat_summary(fun=mean, geom="point", shape=23, size=10, color = "black", fill = "grey")
+
+```
+
+
+### Plot 3 : How does SNP call correlate with methods 
+
+
+```{r, echo = FALSE, results='hide'}
+truseq_tail_data <- combined.stats.metadata %>%
+  filter(n_actg >=27500 , n_ambiguous <= 50) %>%
+  filter(protocol == "Truseq_tail") %>%
+  rename(snps_truseq_tail = ref_snps) %>%
+  rename(truseq_tail_total_reads = total_reads) %>%
+  select(sample_name, snps_truseq_tail, CZB_ID, truseq_tail_total_reads) 
+
+#truseq_tail_data %>%
+#nrow()
+
+
+tagmentation_data <- combined.stats.metadata %>%
+    filter(n_actg >=27500 , n_ambiguous <= 50) %>%
+  filter(protocol == "Tagmentation") %>%
+  rename(snps_tagmentation = ref_snps) %>%
+  rename(tag_total_reads = total_reads) %>%
+    select(sample_name, snps_tagmentation, CZB_ID, tag_total_reads)
+
+
+tagmentation_data_filter <- tagmentation_data %>%
+  filter(tagmentation_data$CZB_ID %in% truseq_tail_data$CZB_ID)
+
+
+snps_data <- inner_join(truseq_tail_data, tagmentation_data_filter, by = "CZB_ID")
+
+#snps_data %>% nrow()
+
+snps_data %>%
+  filter(snps_truseq_tail == snps_tagmentation)
+
+#291/447)*100
+
+```
+
+``` {r, fig.width=10}
+p <- snps_data %>%
+  ggplot(aes(x= snps_truseq_tail, y = snps_tagmentation, color = (snps_truseq_tail == snps_tagmentation), plotly_label = CZB_ID)) +
+  geom_point(size = 0.5) +
+  theme(legend.title = element_blank())
+
+ggplotly(p, tooltip = c("plotly_label", "snps_truseq_tail", "snps_tagmentation"))
+
+
+
+
+
+
+```
+
+``` {r, fig.width=10}
+#study 447 genomes common in both methods 
+#study plots for genomes that pass in both methods
+
+truseq_tail_genomes <- full_dataframe_replace %>%
+  filter(n_actg >=27500 , n_ambiguous <= 50) %>%
+  filter(protocol == "Truseq_tail") %>%
+  rename(snps_truseq_tail = ref_snps) %>%
+  rename(truseq_tail_total_reads = total_reads)
+
+#tagmentation_genomes %>%
+  #nrow()
+
+
+tagmentation_genomes <- full_dataframe_replace %>%
+    filter(n_actg >=27500 , n_ambiguous <= 50) %>%
+  filter(protocol == "Tagmentation") %>%
+  rename(snps_tagmentation = ref_snps) %>%
+  rename(tag_total_reads = total_reads)
+
+
+tagmentation_genome_filter <- tagmentation_genomes %>%
+  filter(tagmentation_genomes$CZB_ID %in% truseq_tail_genomes$CZB_ID)
+
+
+snps_data_genomes <- inner_join(truseq_tail_genomes, tagmentation_genome_filter, by = "CZB_ID")
+#View(snps_data_genomes)
+
+snps_data_genomes <- full_dataframe_replace %>%
+  filter(full_dataframe_replace$CZB_ID %in% snps_data$CZB_ID)
+
+#snps_data_genomes %>% View()
+```
+
+
+
+``` {r, fig.width=10}
+ 
+snps_data %>%
+    ggplot(aes(x= CZB_ID, y = truseq_tail_total_reads/tag_total_reads, color = truseq_tail_total_reads>tag_total_reads)) +
+    geom_point(size = 0.8)+
+    scale_y_continuous(trans = "log10")+
+    #facet_wrap(~ protocol) + 
+    xlab("Sample") +
+  ylab("Truseq Tail Total reads/ Tagmentation Total reads")+
+  #geom_hline(yintercept = 1.5, color = "grey")+
+  #geom_hline(yintercept = 0.5, color = "grey") +
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  labs(color='Truseq > Tagmentaion')
+
+snps_data_genomes %>%
+  filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+    ggplot(aes(x= ct, y = mapped_per_million , color = protocol)) +
+    geom_point(size = 0.8) +
+    #scale_y_continuous(trans = "log10") +
+    #facet_wrap(~ protocol) + 
+    xlab("Ct value") +
+  ylab("mapped reads per million total reads")
+  #geom_vline(xintercept = 25, color = "grey")
+
+snps_data_genomes %>% 
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+    ggplot(aes(x= ct, y = n_actg , color = protocol)) +
+    geom_point(size = 0.8) +
+    #scale_y_continuous(trans = "log10") +
+    #facet_wrap(~ protocol) + 
+    xlab("Ct value") +
+  ylab("genome recovery")+
+  ylim(0,30000)+
+  geom_hline(yintercept = 27500, color = "grey")
+
+snps_data_genomes %>% 
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+    ggplot(aes(x= ct, y = (depth_avg/total_reads)*1000000 , color = protocol)) +
+    geom_point(size = 0.8) +
+    #scale_y_continuous(trans = "log10") +
+    #facet_wrap(~ protocol) + 
+    xlab("Ct value") +
+  ylab("Depth per million total reads")
+
+
+#plot coverage for 5 random samples
+
+#snps_data_genomes %>%
+  #filter(protocol == "Truseq_tail") %>%
+  #sample_n(5) %>%
+  #select(sample_name)
+
+sample_list_447_genomes <- read_lines("447_genomes_random.txt")
+
+#View(sample_list_447_genomes)
+
+for (s in sample_list_447_genomes) {
+  print(s)
+}
+
+dataframe_depth_447_genomes_tag <- data.frame()
+dataframe_depth_447_genomes_tail <- data.frame()
+  
+for (s in sample_list_447_genomes) {
+  filename <- paste("tagmentation_samtools-depth/", s, ".depth.txt", sep = "")
+  tab_df_447_tag <- read.table(filename, header = FALSE, col.names = c("gene", "pos", "coverage"))
+  if (nrow(tab_df_447_tag) == 0) {next}
+  tab_df_447_tag$sample_name <- s
+  dataframe_depth_447_genomes_tag <- rbind(dataframe_depth_447_genomes_tag, tab_df_447_tag)
+  }
+
+#View(dataframe_depth_88_genomes_tag)
+dataframe_depth_447_genomes_tag$protocol <- "Tagmentation"
+
+for (s in sample_list_447_genomes) {
+    filename <- paste("truseq_samtools-depth/", s, ".depth.txt", sep = "")
+  tab_df_447_tail <- read.table(filename, header = FALSE, col.names = c("gene", "pos", "coverage"))
+  if (nrow(tab_df_447_tail) == 0) {next}
+  tab_df_447_tail$sample_name <- s
+  dataframe_depth_447_genomes_tail <- rbind(dataframe_depth_447_genomes_tail, tab_df_447_tail)
+  }
+
+#View(dataframe_depth_447_genomes_tail)
+dataframe_depth_447_genomes_tail$protocol <- "truseq Tail"
+
+dataframe_depth_447_genomes <- rbind(dataframe_depth_447_genomes_tag, dataframe_depth_447_genomes_tail)
+
+
+
+dataframe_depth_447_genomes %>%
+  ggplot(aes(x= pos, y = coverage + 1, color = protocol)) +
+  geom_line() +
+  #ylim(0,100) +
+  scale_y_continuous(trans = "log10")+
+  facet_wrap(~ sample_name)
+
+dataframe_depth_447_genomes %>%
+  filter(sample_name == "RR065i_00246_W-R181-C9_F18") %>%
+  ggplot(aes(x= pos, y = coverage + 1, color = protocol)) +
+  geom_line() +
+  #ylim(0,100) +
+  scale_y_continuous(trans = "log10")+
+  facet_wrap(~ sample_name)
+
+```
+
+``` {r, fig.width=10}
+  #geom_hline(yintercept = 11, color = "grey")
+#isolate 88 genomes that were lost in the truseq tail method and have those CZB_IDs colored
+
+#tagmentation_data is a datframe where all the genomes that pass in tagmentation method qualify 
+
+#tagmentation_data_filter is a dataframe where all the genomes pass in both methods 
+
+# so if I anti_join these two dataframe I should get genomes that only pass in tagmentation, call it tagmentation_only 
+
+#tagmentation_data %>%
+  #nrow()
+#tagmentation_data_filter %>%
+  #nrow()
+
+library(dplyr)
+
+tagmentation_only <- anti_join(tagmentation_data, tagmentation_data_filter, by = "CZB_ID")
+
+tagmentation_only_data <- combined.stats.metadata %>%
+  filter(combined.stats.metadata$CZB_ID %in% tagmentation_only$CZB_ID)
+
+tagementation_only_data_truseq <- tagmentation_only_data %>%
+  filter(protocol == "Tagmentation") %>%
+  rename(tag_total_reads = total_reads)
+
+tagementation_only_data_tag <- tagmentation_only_data %>%
+  filter(protocol == "Truseq_tail")%>%
+  rename(truseq_total_reads = total_reads)
+
+tagmentation_only_data_ratio <- full_join(tagementation_only_data_truseq, tagementation_only_data_tag, by = "CZB_ID")
+
+tagmentation_only_label <- full_dataframe_replace %>%
+  filter(full_dataframe_replace$CZB_ID %in% tagmentation_only$CZB_ID)
+
+#View(full_dataframe_replace)
+
+
+tagmentation_only_data_ratio %>%
+  ggplot(aes(x= CZB_ID , y = truseq_total_reads/tag_total_reads , color = truseq_total_reads>tag_total_reads)) +
+    geom_point(size = 0.8) +
+    scale_y_continuous(trans = "log10") +
+    #facet_wrap(~ protocol) + 
+    #xlab("Ct value") +
+  ylab("Truseq total reads / Tagmentation total read")+
+  theme(axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+  labs(color='Truseq > Tagmentaion')
+
+
+tagmentation_only_label %>% 
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+    ggplot(aes(x= ct, y = mapped_reads/1000000 , color = protocol)) +
+    geom_point(size = 0.8) +
+    #scale_y_continuous(trans = "log10") +
+    #facet_wrap(~ protocol) + 
+    xlab("Ct value") +
+  ylab("mapped reads per million total reads") +
+  theme_bw()
+  #geom_vline(xintercept = 25, color = "grey")
+
+tagmentation_only_label %>% 
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+    ggplot(aes(x= ct, y = n_actg , color = protocol)) +
+    geom_point(size = 0.8) +
+    #scale_y_continuous(trans = "log10") +
+    #facet_wrap(~ protocol) + 
+    xlab("Ct value") +
+  ylab("genome recovery")+
+  geom_hline(yintercept = 27500, color = "grey")
+
+tagmentation_only_label %>% 
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+    ggplot(aes(x= ct, y = depth_avg + 1 , color = protocol)) +
+    geom_point(size = 0.8) +
+    scale_y_continuous(trans = "log10") +
+    #facet_wrap(~ protocol) + 
+    xlab("Ct value") +
+  ylab("average depth + 1")
+  #geom_hline(yintercept = 11, color = "grey")
+
+
+
+# How is coverage impacted ? in these genomes 
+#selecting following samples 
+#tagmentation_only_label %>%
+ # filter(protocol == "Truseq_tail")%>%
+  #filter(depth_avg > 5) %>%
+ # sample_n(5)%>%
+  #select (sample_name)%>%
+  #View()
+
+sample_list_88_genomes <- read_lines("88_genomes_random.txt")
+
+#View(sample_list_88_genomes)
+
+for (s in sample_list_88_genomes) {
+  print(s)
+}
+
+dataframe_depth_88_genomes_tag <- data.frame()
+dataframe_depth_88_genomes_tail <- data.frame()
+  
+for (s in sample_list_88_genomes) {
+  filename <- paste("tagmentation_samtools-depth/", s, ".depth.txt", sep = "")
+  tab_df_tag <- read.table(filename, header = FALSE, col.names = c("gene", "pos", "coverage"))
+  if (nrow(tab_df_tag) == 0) {next}
+  tab_df_tag$sample_name <- s
+  dataframe_depth_88_genomes_tag <- rbind(dataframe_depth_88_genomes_tag, tab_df_tag)
+  }
+
+#View(dataframe_depth_88_genomes_tag)
+dataframe_depth_88_genomes_tag$protocol <- "Tagmentation"
+
+for (s in sample_list_88_genomes) {
+    filename <- paste("truseq_samtools-depth/", s, ".depth.txt", sep = "")
+  tab_df_tail <- read.table(filename, header = FALSE, col.names = c("gene", "pos", "coverage"))
+  if (nrow(tab_df_tail) == 0) {next}
+  tab_df_tail$sample_name <- s
+  dataframe_depth_88_genomes_tail <- rbind(dataframe_depth_88_genomes_tail, tab_df_tail)
+  }
+
+#View(dataframe_depth_88_genomes_tail)
+dataframe_depth_88_genomes_tail$protocol <- "truseq Tail"
+
+dataframe_depth_88_genomes <- rbind(dataframe_depth_88_genomes_tag, dataframe_depth_88_genomes_tail)
+
+
+
+dataframe_depth_88_genomes %>%
+  ggplot(aes(x= pos, y = coverage + 1, color = protocol)) +
+  geom_line() +
+  #ylim(0,100) +
+  scale_y_continuous(trans = "log10")+
+  facet_wrap(~ sample_name)
+
+dataframe_depth_88_genomes %>%
+  filter(sample_name == "RR065e_03935_W-R183-F10_L19") %>%
+  ggplot(aes(x= pos, y = coverage + 1, color = protocol)) +
+  geom_line() +
+  #ylim(0,100) +
+  scale_y_continuous(trans = "log10")+
+  facet_wrap(~ sample_name)
+
+
+```
+
+### plot for the depth per million total reads versus ct in two different methods
+
+``` {r, fig.width=10}
+full_dataframe_replace$depth_per_million <- (full_dataframe_replace$depth_avg/full_dataframe_replace$total_reads)*1000000
+full_dataframe_replace %>% 
+    filter(assay != "RnaseP") %>%
+  filter(assay != "RP") %>%
+    ggplot(aes(x= ct, y = depth_per_million , color = protocol)) +
+    geom_point(size = 0.8) +
+    #scale_y_continuous(trans = "log10") +
+    #facet_wrap(~ protocol) + 
+    xlab("Ct value") +
+  ylab("depth average per million total reads")
+  #geom_vline(xintercept = 25, color = "grey")
+
+```
+
+
+
+```{r, include=show_script}
+sessionInfo()
+```
