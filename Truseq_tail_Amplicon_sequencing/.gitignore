@@ -1,0 +1,11 @@
+scratch
+.DS_Store
+.RData
+.nextflow*
+.ipynb_checkpoints
+.Rhistory
+.ob-jupyter
+.snakemake
+*~
+svg-inkscape/
+__pycache__
